@@ -16,7 +16,8 @@ export const STRINGS = {
 
     // dog form
     dog_new: 'New Dog', dog_edit: 'Edit Dog',
-    photo_hint: 'Tap to add a photo (camera or gallery)',
+    photo_hint: 'Tap to add photos (camera or gallery)',
+    add_photos: 'Add photos',
     name: 'Name', breed: 'Breed', color: 'Color', sex: 'Sex', birthday: 'Birthday',
     owner_info: 'Owner', owner_first: 'Owner First Name', owner_last: 'Owner Last Name',
     phone: 'Phone Number', grooming_specs: 'Grooming Specs',
@@ -81,7 +82,8 @@ export const STRINGS = {
     upcoming_title: 'Próximas citas',
 
     dog_new: 'Nuevo Perro', dog_edit: 'Editar Perro',
-    photo_hint: 'Toca para agregar foto (cámara o galería)',
+    photo_hint: 'Toca para agregar fotos (cámara o galería)',
+    add_photos: 'Agregar fotos',
     name: 'Nombre', breed: 'Raza', color: 'Color', sex: 'Sexo', birthday: 'Cumpleaños',
     owner_info: 'Dueño', owner_first: 'Nombre del Dueño', owner_last: 'Apellido del Dueño',
     phone: 'Teléfono', grooming_specs: 'Especificaciones de Corte',

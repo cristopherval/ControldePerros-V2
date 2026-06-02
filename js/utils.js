@@ -88,6 +88,32 @@ export function isModalOpen() {
   return !$('#modalRoot').classList.contains('d-none');
 }
 
+// ---------------- Lightbox (full-screen image viewer) ----------------
+/** Open an image full-screen with an X in the corner to close it. */
+export function openLightbox(src) {
+  if (!src) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'lightbox';
+  overlay.innerHTML = `
+    <button class="lightbox__close" aria-label="Close"><i class="ti ti-x"></i></button>
+    <img class="lightbox__img" src="${src}" alt="" />`;
+
+  function close() {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey, true);
+  }
+  function onKey(e) {
+    // intercept ESC before the global modal handler so only the lightbox closes
+    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+  }
+  // close on X or on the dark backdrop (but not when tapping the image itself)
+  overlay.addEventListener('click', (e) => {
+    if (e.target.closest('.lightbox__close') || e.target === overlay) close();
+  });
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(overlay);
+}
+
 /** Simple confirm dialog returning a Promise<boolean>. */
 export function confirmDialog(message, opts = {}) {
   const title = opts.title || t('delete');

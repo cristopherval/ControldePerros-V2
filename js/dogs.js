@@ -3,7 +3,7 @@ import { store } from './store.js';
 import { t } from './i18n.js';
 import {
   $, $$, openModal, closeModal, confirmDialog, toast, escapeHtml, initials,
-  readImageResized, optionsFrom, waLink, smsLink, telLink, fmtDate, todayISO,
+  readImageResized, optionsFrom, waLink, smsLink, telLink, fmtDate, todayISO, openLightbox,
 } from './utils.js';
 import {
   dogVaccineStatus, statusMeta, renderVaccineChecklist, bindVaccineChecklist,
@@ -14,6 +14,20 @@ import { openAppointmentForm, serviceLabels, sendReminder } from './appointments
 const filters = { search: '', breed: '', color: '', sex: '', status: '' };
 
 const SEX_OPTIONS = [{ value: 'Male', label: 'male' }, { value: 'Female', label: 'female' }];
+
+const BLADE_NUMBERS = Array.from({ length: 10 }, (_, i) => `#${i + 1}`); // #1 … #10
+
+/** Build <select> options for a blade field, preserving any legacy/custom value. */
+function bladeOptions(selected = '') {
+  let html = `<option value="">${escapeHtml(t('select'))}</option>`;
+  if (selected && !BLADE_NUMBERS.includes(selected)) {
+    html += `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>`;
+  }
+  html += BLADE_NUMBERS
+    .map((n) => `<option value="${n}" ${n === selected ? 'selected' : ''}>${n}</option>`)
+    .join('');
+  return html;
+}
 
 // ---------------- Badges (birthday / alert) ----------------
 function birthdayThisMonth(dog) {
@@ -123,17 +137,18 @@ export function clearFilters() {
 // ---------------- Dog form (create / edit) ----------------
 export function openDogForm(id) {
   const d = id ? store.getDog(id) : null;
-  let photoData = d ? (d.photo || '') : '';
+  // photos: array of data-URLs. Migrate legacy single `photo` field.
+  let photos = d ? (Array.isArray(d.photos) ? [...d.photos] : (d.photo ? [d.photo] : [])) : [];
 
   const sexOpts = optionsFrom(SEX_OPTIONS.map((o) => ({ value: o.value, label: t(o.label) })), d ? d.sex : '', t('select'));
 
   openModal({
     title: d ? t('dog_edit') : t('dog_new'),
     bodyHTML: `
-      <label class="photo-picker" id="photoPick">
-        <img id="photoPrev" src="${photoData}" alt="" style="${photoData ? '' : 'display:none'}"/>
-        <i class="ti ti-camera" id="photoIcon" style="${photoData ? 'display:none' : ''}"></i>
-        <input type="file" id="dogPhoto" accept="image/*" capture="environment" />
+      <div class="photo-gallery" id="photoGallery"></div>
+      <label class="photo-add-btn" id="photoPick">
+        <i class="ti ti-camera"></i><span>${escapeHtml(t('add_photos'))}</span>
+        <input type="file" id="dogPhoto" accept="image/*" multiple />
       </label>
       <div class="photo-hint">${escapeHtml(t('photo_hint'))}</div>
 
@@ -167,31 +182,43 @@ export function openDogForm(id) {
       <label class="form-label" style="margin-top:6px">${escapeHtml(t('grooming_specs'))}</label>
       <div class="form-row">
         <div class="field"><label class="form-label">${escapeHtml(t('blade_head'))}</label>
-          <input id="dBladeH" class="form-control" list="bladeList" value="${d ? escapeHtml(d.bladeHead || '') : ''}" /></div>
+          <select id="dBladeH" class="form-select">${bladeOptions(d ? (d.bladeHead || '') : '')}</select></div>
         <div class="field"><label class="form-label">${escapeHtml(t('blade_body'))}</label>
-          <input id="dBladeB" class="form-control" list="bladeList" value="${d ? escapeHtml(d.bladeBody || '') : ''}" /></div>
+          <select id="dBladeB" class="form-select">${bladeOptions(d ? (d.bladeBody || '') : '')}</select></div>
       </div>
-      <datalist id="bladeList">
-        <option value="#3"></option><option value="#4"></option><option value="#5"></option>
-        <option value="#7"></option><option value="#10"></option><option value="#15"></option><option value="#30"></option>
-      </datalist>
       <div class="field"><label class="form-label">${escapeHtml(t('notes'))}</label>
         <textarea id="dNotes" class="form-control" rows="2">${d ? escapeHtml(d.notes || '') : ''}</textarea></div>`,
     footHTML: `
       <button class="btn btn-outline-secondary" data-act="cancel">${escapeHtml(t('cancel'))}</button>
       <button class="btn btn-primary" data-act="save">${escapeHtml(t('save'))}</button>`,
     onMount(body, foot) {
+      const gallery = $('#photoGallery', body);
+
+      // Render the thumbnails grid; re-bind remove buttons each time.
+      function renderGallery() {
+        gallery.classList.toggle('d-none', photos.length === 0);
+        gallery.innerHTML = photos.map((src, i) => `
+          <div class="photo-thumb">
+            <img src="${src}" alt=""/>
+            <button type="button" class="photo-thumb__del" data-rm="${i}" aria-label="Remove"><i class="ti ti-x"></i></button>
+          </div>`).join('');
+        $$('[data-rm]', gallery).forEach((b) => b.onclick = () => {
+          photos.splice(Number(b.getAttribute('data-rm')), 1);
+          renderGallery();
+        });
+      }
+      renderGallery();
+
       const fileInput = $('#dogPhoto', body);
       fileInput.addEventListener('change', async () => {
-        const file = fileInput.files[0];
-        if (!file) return;
-        photoData = await readImageResized(file);
-        // update preview in place (input element is preserved -> handler stays bound)
-        const prev = $('#photoPrev', body);
-        const icon = $('#photoIcon', body);
-        prev.src = photoData;
-        prev.style.display = '';
-        if (icon) icon.style.display = 'none';
+        const files = [...fileInput.files];
+        if (!files.length) return;
+        for (const file of files) {
+          const data = await readImageResized(file);
+          if (data) photos.push(data);
+        }
+        fileInput.value = ''; // allow re-selecting the same file later
+        renderGallery();
       });
 
       foot.querySelector('[data-act="cancel"]').onclick = closeModal;
@@ -211,7 +238,8 @@ export function openDogForm(id) {
           bladeHead: $('#dBladeH', body).value.trim(),
           bladeBody: $('#dBladeB', body).value.trim(),
           notes: $('#dNotes', body).value.trim(),
-          photo: photoData || '',
+          photos,
+          photo: photos[0] || '', // first photo kept for card/avatar thumbnails
           vaccines: d ? (d.vaccines || {}) : {},
         };
         store.upsertDog(dog);
@@ -231,11 +259,14 @@ export function openDogProfile(id) {
 
   const infoBox = (lbl, val) => `<div class="info-box"><div class="info-box__lbl">${escapeHtml(lbl)}</div><div class="info-box__val">${escapeHtml(val || '—')}</div></div>`;
 
+  // all photos (migrate legacy single-photo records)
+  const photos = Array.isArray(dog.photos) ? dog.photos : (dog.photo ? [dog.photo] : []);
+
   function bodyHTML() {
     return `
       <div class="profile-hero">
         <div class="profile-hero__avatar">
-          ${dog.photo ? `<img src="${dog.photo}" alt=""/>` : `<i class="ti ti-dog"></i>`}
+          ${photos[0] ? `<img src="${photos[0]}" alt="" data-zoom/>` : `<i class="ti ti-dog"></i>`}
         </div>
         <div class="profile-hero__name">${escapeHtml(dog.name)}</div>
         <div class="profile-hero__sub">${escapeHtml([dog.breed, dog.color, dog.sex && t(dog.sex.toLowerCase())].filter(Boolean).join(' · ') || '—')}</div>
@@ -243,6 +274,11 @@ export function openDogProfile(id) {
           <span class="status-pill pill-${meta.cls}"><i class="ti ${meta.icon}"></i> ${escapeHtml(t(meta.key))}</span>
         </div>
       </div>
+
+      ${photos.length > 1 ? `
+      <div class="photo-gallery profile-gallery">
+        ${photos.map((src) => `<div class="photo-thumb"><img src="${src}" alt="" data-zoom/></div>`).join('')}
+      </div>` : ''}
 
       <div class="info-grid">
         ${infoBox(t('owner'), owner)}
@@ -271,6 +307,12 @@ export function openDogProfile(id) {
   }
 
   function mount(body, foot) {
+    // tap any photo to view it full-screen (with an X in the corner to close)
+    $$('[data-zoom]', body).forEach((img) => {
+      img.style.cursor = 'zoom-in';
+      img.onclick = () => openLightbox(img.src);
+    });
+
     // vaccine checklist live status update
     bindVaccineChecklist($('#vaxBox', body), dog, () => {
       renderDogs();

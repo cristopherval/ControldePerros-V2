@@ -135,7 +135,7 @@ export const store = {
       dogs: this.data.dogs.length,
       employees: this.data.employees.length,
       appointments: this.data.appointments.length,
-      photos: this.data.dogs.filter((d) => d.photo).length,
+      photos: this.data.dogs.reduce((n, d) => n + (Array.isArray(d.photos) ? d.photos.length : (d.photo ? 1 : 0)), 0),
       bytes: new Blob([this.exportJSON()]).size,
     };
   },
